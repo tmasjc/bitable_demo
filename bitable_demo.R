@@ -2,71 +2,91 @@ library(config)
 library(tidyverse)
 library(httr)
 library(jsonlite)
-conf <- config::get()
+source("fake_data.R")
 
-## obtain tenant access token ----
+get_tenant_token <- function(conf) {
+    addr <- "/auth/v3/tenant_access_token/internal"
+    get_tenant_token_url <- stringr::str_glue(conf$domain, addr)
 
-get_tenant_token <- "/auth/v3/tenant_access_token/internal"
-get_tenant_token_url <- with(conf, str_glue(domain, get_tenant_token))
-
-tenant_access_token <-
-    POST(
+    r <- POST(
         get_tenant_token_url,
         body = list(
             app_id = conf$app_id,
             app_secret = conf$app_secret
         ),
-        encode = "json",
-        verbose()
-    ) |>
-    content() |> 
-    pluck("tenant_access_token")
+        encode = "json"
+    ) 
+    # return 
+    if (httr::status_code(r) == 200) {
+        purrr::pluck(content(r), "tenant_access_token")
+    } else {
+        stop("Invalid status. Check tenant access token.")
+    }
+}
 
-# form request headers 
-headers <- add_headers(
-    Authorization = str_glue("Bearer {tenant_access_token}")
-)
+form_request_headers <- function(token) {
+    add_headers(
+        Authorization = stringr::str_glue("Bearer {token}")
+    )
+}
 
-## get record ids ----
+get_record_ids <- function(conf, headers) {
+    addr <- "{domain}/bitable/v1/apps/{app_token}/tables/{table}/records"
+    get_records_url <- with(conf, stringr::str_glue(addr))
+    resp <- GET(get_records_url, headers)
 
-get_records <- "/bitable/v1/apps/{app_token}/tables/{table}/records"
-get_records_url <- with(conf, str_glue(domain, get_records))
-resp <- GET(get_records_url, headers, verbose())
+    resp |>
+        content() |>
+        purrr::pluck("data", "items") |> # nolint
+        purrr::map(pluck, "record_id")
+}
 
-records <- resp |>
-    content() |>
-    pluck("data", "items") |>
-    map(pluck, "record_id")
-records
+delete_records <- function(conf, headers, records) {
+    addr <- "{domain}/bitable/v1/apps/{app_token}/tables/{table}/records/batch_delete"
+    delete_records_url <- with(conf, stringr::str_glue(addr))
 
-## delete all records ----
+    POST(
+        delete_records_url,
+        headers,
+        body = list(records = records),
+        encode = "json"
+    )
+}
 
-delete_records <- "/bitable/v1/apps/{app_token}/tables/{table}/records/batch_delete"
-delete_records_url <- with(conf, str_glue(domain, delete_records))
+batch_create_records <- function(conf, headers, data) {
+    addr <- "{domain}/bitable/v1/apps/{app_token}/tables/{table}/records/batch_create"
+    batch_create_url <- with(conf, stringr::str_glue(addr))
 
-r <- POST(
-    delete_records_url,
-    headers,
-    body = list(records = records),
-    encode = "json",
-    verbose()
-)
+    POST(
+        batch_create_url,
+        headers,
+        body = list(records = data),
+        encode = "json"
+    )
+}
 
-## making new records ----
+# load global config 
+conf <- config::get()
 
-batch_create <- "/bitable/v1/apps/{app_token}/tables/{table}/records/batch_create"
-batch_create_url <- with(conf, str_glue(domain, batch_update))
-
-samples <- df |>
-    # sample_n(size = 5) |>
-    pmap(function(...) list(...)) |>
-    map(function(x) list(fields = x))
-
-r <- POST(
-    batch_create_url,
-    headers,
-    body = list(records = samples),
-    encode = "json",
-    verbose()
-)
+# main loop
+while (1) {
+    # read from file if exists 
+    if (file.exists(conf$cachefile)) {
+        tenant_access_token <- readLines(conf$cachefile)
+    } else {
+        tenant_access_token <- get_tenant_token(conf)
+        write(tenant_access_token, conf$cachefile, append = FALSE)
+    }
+    headers  <- form_request_headers(tenant_access_token)
+    
+    # delete some data then add some
+    records  <- get_record_ids(conf, headers)
+    delete_records(conf, headers, records)
+    fakedata <- generate_fake_data()
+    batch_create_records(conf, headers, fakedata)
+    message("Success ✔ @ ", Sys.time(), "\n")
+    
+    # pause for abit
+    Sys.sleep(conf$interval)
+}
 # end
