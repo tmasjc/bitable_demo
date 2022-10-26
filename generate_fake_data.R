@@ -14,8 +14,8 @@ generate_fake_data <- function(min = 1, max = 10) {
 
     # parameters for fake data
     params <- list(
-        sex = c("Male", "Female"),
-        src = c("Facebook Ads", "Google SEM", "Inbound Marketing")
+        sex = c("男", "女"),
+        src = c("抖音", "微信", "外呼")
     )
 
     # this is our fake data
@@ -23,7 +23,8 @@ generate_fake_data <- function(min = 1, max = 10) {
         ID     = ids::random_id(max),
         Sex    = gen_(params$sex, c(0.3, 0.7)),
         Date   = gen_(seq(Sys.Date() - 3, Sys.Date(), by = 1)),
-        Source = gen_(params$src, c(0.2, 0.2, 0.2)),
+        # c("Facebook Ads", "Google SEM", "Inbound Marketing")
+        Source = gen_(params$src, c(0.05, 0.2, 0.2)),
         CAC    = rnorm(n = max, mean = 150, sd = 50)
     ) |>
         dplyr::sample_n(round(runif(1, min = min, max = max))) |>
