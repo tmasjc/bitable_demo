@@ -1,8 +1,4 @@
-library(config)
-library(tidyverse)
-library(httr)
-library(jsonlite)
-source("fake_data.R")
+require(httr)
 
 get_tenant_token <- function(conf) {
     addr <- "/auth/v3/tenant_access_token/internal"
@@ -61,32 +57,8 @@ batch_create_records <- function(conf, headers, data) {
         batch_create_url,
         headers,
         body = list(records = data),
-        encode = "json"
+        encode = "json",
+        # verbose(),
+        handle = NULL
     )
 }
-
-# load global config 
-conf <- config::get()
-
-# main loop
-while (1) {
-    # read from file if exists 
-    if (file.exists(conf$cachefile)) {
-        tenant_access_token <- readLines(conf$cachefile)
-    } else {
-        tenant_access_token <- get_tenant_token(conf)
-        write(tenant_access_token, conf$cachefile, append = FALSE)
-    }
-    headers  <- form_request_headers(tenant_access_token)
-    
-    # delete some data then add some
-    records  <- get_record_ids(conf, headers)
-    delete_records(conf, headers, records)
-    fakedata <- generate_fake_data()
-    batch_create_records(conf, headers, fakedata)
-    message("Success ✔ @ ", Sys.time(), "\n")
-    
-    # pause for abit
-    Sys.sleep(conf$interval)
-}
-# end
