@@ -18,7 +18,7 @@ while (1) {
         write(tenant_access_token, conf$cachefile, append = FALSE)
     }
     headers  <- form_request_headers(tenant_access_token)    
-    fakedata <- generate_fake_data()
+    fakedata <- generate_fake_data(min = 1, max = 3)
     resp     <- batch_create_records(conf, headers, fakedata)
 
     if (content(resp)$msg == "success") {
